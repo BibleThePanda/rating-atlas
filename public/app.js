@@ -127,48 +127,108 @@
     }
     charts[id]=new Chart($(id),configuration);
   }
-  function chartOptions(horizontal=false, max=null, click=null) {
+  // Draw precise numeric values directly on every bar, including on phones.
+  const valueLabels={
+    id:'ratingAtlasLabels',
+    afterDatasetsDraw(chart){
+      const dataset=chart.data.datasets[0],meta=chart.getDatasetMeta(0);
+      if(!dataset||!meta||!meta.data)return;
+      const horizontal=chart.options.indexAxis==='y';
+      const ctx=chart.ctx,muted=colors()[2];
+      ctx.save();ctx.fillStyle=muted;ctx.font='600 11px system-ui, sans-serif';
+      ctx.textBaseline='middle';
+      meta.data.forEach((bar,i)=>{
+        const val=dataset.data[i];
+        if(!Number.isFinite(Number(val)))return;
+        const label=String(val);
+        const width=ctx.measureText(label).width;
+        if(horizontal){
+          ctx.textAlign='left';
+          ctx.fillText(label,Math.min(bar.x+7,chart.chartArea.right-width-1),bar.y);
+        }else{
+          ctx.textAlign='center';
+          ctx.fillText(label,bar.x,Math.max(bar.y-9,chart.chartArea.top+11));
+        }
+      });
+      ctx.restore();
+    }
+  };
+  function chartOptions(horizontal=false,max=null,click=null,measure='scores') {
     const [accent,blue,muted,border]=colors();
-    const scales={
-      x:{ticks:{color:muted,maxRotation:0,autoSkip:true},grid:{color:border}},
-      y:{ticks:{color:muted,autoSkip:true},grid:{color:border}}
+    const mobile=window.innerWidth<=600, labelLimit=mobile?16:31;
+    const axes={
+      x:{ticks:{color:muted,maxRotation:0,autoSkip:!horizontal,font:{size:mobile?10:12}},grid:{color:border},border:{display:false}},
+      y:{ticks:{color:muted,autoSkip:!horizontal,font:{size:mobile?11:12},padding:7},grid:{color:border},border:{display:false}}
     };
-    if(horizontal){scales.x.min=0;if(max!==null)scales.x.max=max;}
-    else scales.y.beginAtZero=true;
-    return {responsive:true,maintainAspectRatio:false,indexAxis:horizontal?'y':'x',
+    if(horizontal){
+      axes.x.min=0;if(max!==null)axes.x.max=max;
+      axes.x.ticks.stepSize=measure==='scores'?20:undefined;
+      axes.y.ticks.callback=function(value) {
+        const label=String(this.getLabelForValue(value));
+        return label.length>labelLimit?label.slice(0,labelLimit-1)+'…':label;
+      };
+      axes.y.afterFit=axis=>{axis.width=Math.min(mobile?139:235,Math.max(axis.width,85));};
+    }else{
+      axes.y.beginAtZero=true;
+      axes.y.ticks.precision=0;
+      axes.x.ticks.maxRotation=mobile?50:0;
+      axes.x.ticks.minRotation=mobile?30:0;
+    }
+    return {
+      responsive:true,maintainAspectRatio:false,indexAxis:horizontal?'y':'x',
+      animation:{duration:260},
+      layout:{padding:{right:horizontal?41:10,top:17}},
       onClick:click||undefined,
-      plugins:{legend:{display:false},tooltip:{backgroundColor:'#1b2032',titleColor:'#fff',bodyColor:'#eff2fa'}},
-      scales};
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'#171c2a',titleColor:'#fff',bodyColor:'#f1f3fa',padding:12,displayColors:false,
+          callbacks:{label:context=>measure==='scores'?'Score: '+fmt(Number(context.raw))+' / 100':'Rated releases: '+fmt(Number(context.raw))}
+        }
+      },
+      scales:axes
+    };
   }
   function redrawCharts() {
-    if(!ratings.length){Object.keys(charts).forEach(id=>{charts[id].destroy();delete charts[id];});$('noArtists').hidden=false;return;}
+    if(!ratings.length){
+      Object.keys(charts).forEach(id=>{charts[id].destroy();delete charts[id];});
+      $('noArtists').hidden=false;
+      return;
+    }
     const [accent,blue]=colors(), minimum=Number($('minAlbums').value);
-    const top=artists.filter(x=>x.count>=minimum).sort((a,b)=>b.avg-a.avg||b.count-a.count).slice(0,25);
+    const topLimit=Number($('topArtists').value)||10;
+    const top=artists.filter(x=>x.count>=minimum).sort((a,b)=>b.avg-a.avg||b.count-a.count).slice(0,topLimit);
     $('noArtists').hidden=top.length>0;
-    $('averageChart').parentElement.style.height=Math.max(300,Math.min(850,top.length*27+55))+'px';
+    $('averageChart').parentElement.style.height=Math.max(260,top.length*40+75)+'px';
     createChart('averageChart',{type:'bar',
-      data:{labels:top.map(x=>x.name),datasets:[{data:top.map(x=>+x.avg.toFixed(1)),backgroundColor:accent,borderRadius:5}]},
-      options:chartOptions(true,100,(_event,active)=>{if(active.length)openArtist(top[active[0].index].name);})});
-    const counts=[...artists].sort((a,b)=>b.count-a.count).slice(0,15);
+      data:{labels:top.map(x=>x.name),datasets:[{data:top.map(x=>+x.avg.toFixed(1)),backgroundColor:accent,borderRadius:5,maxBarThickness:25}]},
+      options:chartOptions(true,100,(_event,active)=>{if(active.length)openArtist(top[active[0].index].name);},'scores'),
+      plugins:[valueLabels]});
+    const counts=[...artists].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name)).slice(0,12);
+    $('countChart').parentElement.style.height=Math.max(265,counts.length*38+55)+'px';
     createChart('countChart',{type:'bar',
-      data:{labels:counts.map(x=>x.name),datasets:[{data:counts.map(x=>x.count),backgroundColor:blue,borderRadius:5}]},
-      options:chartOptions(true,Math.max(...counts.map(x=>x.count))+1,(_event,active)=>{if(active.length)openArtist(counts[active[0].index].name);})});
+      data:{labels:counts.map(x=>x.name),datasets:[{data:counts.map(x=>x.count),backgroundColor:blue,borderRadius:5,maxBarThickness:24}]},
+      options:chartOptions(true,Math.max(1,...counts.map(x=>x.count))+Math.max(2,Math.ceil(Math.max(1,...counts.map(x=>x.count))*.15)),
+        (_event,active)=>{if(active.length)openArtist(counts[active[0].index].name);},'counts'),
+      plugins:[valueLabels]});
     const buckets=new Array(10).fill(0);
     ratings.forEach(r=>buckets[Math.min(9,Math.floor(r.score/10))]++);
     createChart('distributionChart',{type:'bar',
-      data:{labels:['0–9','10–19','20–29','30–39','40–49','50–59','60–69','70–79','80–89','90–100'],datasets:[{data:buckets,backgroundColor:accent,borderRadius:5}]},
-      options:chartOptions(false)});
+      data:{labels:['0–9','10–19','20–29','30–39','40–49','50–59','60–69','70–79','80–89','90–100'],
+        datasets:[{data:buckets,backgroundColor:accent,borderRadius:4,maxBarThickness:45}]},
+      options:chartOptions(false,null,null,'counts'),
+      plugins:[valueLabels]});
   }
   function openArtist(name,scroll=true) {
     const artist=artists.find(x=>x.name===name);if(!artist)return;
     selectedArtist=name;
     $('artistPanel').hidden=false;
-    $('artistTitle').textContent=artist.name+' · '+artist.count+' album'+(artist.count===1?'':'s');
+    $('artistTitle').textContent=artist.name+' · '+artist.count+' rated release'+(artist.count===1?'':'s');
     const entries=[...artist.albums].sort((a,b)=>b.score-a.score);
-    $('artistChart').parentElement.style.height=Math.max(280,Math.min(1400,entries.length*32+65))+'px';
+    $('artistChart').parentElement.style.height=Math.max(280,entries.length*42+75)+'px';
     createChart('artistChart',{type:'bar',
-      data:{labels:entries.map(x=>x.album),datasets:[{data:entries.map(x=>x.score),backgroundColor:colors()[1],borderRadius:5}]},
-      options:chartOptions(true,100)});
+      data:{labels:entries.map(x=>x.album),datasets:[{data:entries.map(x=>x.score),backgroundColor:colors()[1],borderRadius:5,maxBarThickness:25}]},
+      options:chartOptions(true,100,null,'scores'),plugins:[valueLabels]});
     if(scroll)$('artistPanel').scrollIntoView({behavior:'smooth',block:'start'});
   }
   function renderTable() {
