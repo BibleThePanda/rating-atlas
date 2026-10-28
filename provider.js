@@ -38,7 +38,7 @@ export function decodeRating(item){
   if(raw===undefined||raw===null||String(raw).trim()==='')return null;
   const score=Number(raw);
   if(!artist||!album||!Number.isFinite(score)||score<0||score>100)return null;
-  return {artist,album,score,url:safeLink(item.url??item.albumUrl),id:Number.isSafeInteger(item.albumId)?item.albumId:null};
+  return {artist,album,score,url:safeLink(item.url??item.albumUrl),releaseType:String(item.mediaType??item.releaseType??item.type??'').trim()||null,id:Number.isSafeInteger(item.albumId)?item.albumId:null};
 }
 async function pageRequest(username,page){
   const url=new URL('/user/ratings',API_ORIGIN);
