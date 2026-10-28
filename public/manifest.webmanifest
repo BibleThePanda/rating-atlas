@@ -1,0 +1,18 @@
+{
+  "name": "Rating Atlas – Album Ratings",
+  "short_name": "Rating Atlas",
+  "description": "Explore your music ratings and artist statistics",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0c0f18",
+  "theme_color": "#0c0f18",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
