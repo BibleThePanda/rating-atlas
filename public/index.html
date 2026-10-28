@@ -34,10 +34,10 @@
       <input id="importFile" class="sr-only" type="file" accept=".csv,.json,text/csv,application/json">
       <button id="importHelp" class="help" type="button" aria-expanded="false">File format help</button>
     </div>
-    <p class="tip">Your imported data stays in your browser—it is not uploaded to our server.</p>
+    <p class="tip">Imported files stay in your browser; automatic loads use an unofficial community API.</p>
     <div id="importInstructions" class="instructions" hidden>
-      Import a CSV file with column headers <code>artist,album,score,url</code> (URL optional), or a JSON array of objects using those same fields. Scores are from 0 through 100.
-      <p><code>artist,album,score</code><br><code>Radiohead,In Rainbows,94</code><br><code>Little Simz,Sometimes I Might Be Introvert,89</code></p>
+      Import a CSV file with <code>artist,album,score,type,url</code> (type and URL optional), or JSON objects using those fields. Type may be LP, Album, EP, Single, Mixtape, etc. Scores are 0–100. Without a type, releases appear as <strong>Unclassified</strong> instead of being counted as albums.
+      <p><code>artist,album,score,type</code><br><code>Radiohead,In Rainbows,94,LP</code><br><code>Little Simz,Sometimes I Might Be Introvert,89,LP</code><br><code>Example Artist,Example Single,83,Single</code></p>
     </div>
   </section>
   <main id="dashboard" hidden>
@@ -45,27 +45,47 @@
       <div><p class="eyebrow">Listening fingerprint</p><h2 id="profileName">Your collection</h2></div>
       <a id="profileLink" class="profile-link" target="_blank" rel="noopener noreferrer" hidden>View AOTY profile ↗</a>
     </div>
-    <section id="stats" class="stats" aria-label="Summary statistics"></section>
+    <section class="release-controls" aria-label="Release type filter">
+      <div class="release-control-head">
+        <div><p class="eyebrow">Release breakdown</p><h3>Albums and singles, separately.</h3></div>
+        <label class="filter-label" for="releaseFilter">Show
+          <select id="releaseFilter">
+            <option value="album">Albums (LP)</option>
+            <option value="all">All releases</option>
+            <option value="ep">EPs</option>
+            <option value="single">Singles</option>
+            <option value="other">Other types</option>
+            <option value="unknown">Unclassified</option>
+          </select>
+        </label>
+      </div>
+      <div id="releaseCounts" class="release-counts" aria-live="polite"></div>
+      <p id="releaseNote" class="hint"></p>
+    </section>
+    <section id="stats" class="stats" aria-label="Statistics for selected release type"></section>
     <div class="chart-grid">
       <article class="panel wide">
         <div class="panel-header"><div><p class="eyebrow">Artist landscape</p><h3>Average score by artist</h3></div>
-          <label class="filter-label" for="minAlbums">Minimum albums
+          <div class="chart-settings"><label class="filter-label" for="minAlbums">Minimum releases per artist
             <select id="minAlbums"><option value="1" selected>1+</option><option value="2">2+</option><option value="3">3+</option><option value="5">5+</option><option value="10">10+</option></select>
           </label>
+          <label class="filter-label" for="topArtists">Artists shown
+            <select id="topArtists"><option value="10">Top 10</option><option value="20">Top 20</option><option value="50">Top 50</option></select>
+          </label></div>
         </div>
         <div class="chart-wrap tall"><canvas id="averageChart"></canvas></div>
-        <p class="hint">Top 25 qualifying artists · tap a bar to explore their albums.</p>
+        <p class="hint">Scores out of 100. Full artist names and precise scores appear on tap. Select Top 20 or Top 50 to see more.</p>
         <p class="hint" id="noArtists" hidden>No artists meet this minimum. Select a lower minimum.</p>
       </article>
       <article class="panel">
         <div class="panel-header"><div><p class="eyebrow">Collection depth</p><h3>Albums rated per artist</h3></div></div>
         <div class="chart-wrap"><canvas id="countChart"></canvas></div>
-        <p class="hint">Top 15 artists by number of albums. Tap to drill down.</p>
+        <p class="hint">Top 12 artists by rated releases in the selected category. Tap a bar for full details.</p>
       </article>
       <article class="panel">
         <div class="panel-header"><div><p class="eyebrow">Your score DNA</p><h3>Score distribution</h3></div></div>
         <div class="chart-wrap"><canvas id="distributionChart"></canvas></div>
-        <p class="hint">10-point score buckets; 100 is included in the final bucket.</p>
+        <p class="hint">Each bar shows how many releases you rated in that 10-point score range.</p>
       </article>
     </div>
     <section id="artistPanel" class="panel artist-panel" hidden>
@@ -74,11 +94,11 @@
       <div class="chart-wrap tall"><canvas id="artistChart"></canvas></div>
     </section>
     <section class="panel table-panel">
-      <div class="panel-header table-head"><div><p class="eyebrow">Complete catalog</p><h3>Album ratings <span id="tableCount"></span></h3></div>
+      <div class="panel-header table-head"><div><p class="eyebrow">Complete catalog</p><h3>Rated releases <span id="tableCount"></span></h3></div>
       <label class="sr-only" for="search">Search artists or albums</label>
       <input id="search" type="search" class="search" placeholder="⌕  Search artist or album">
       </div>
-      <div class="table-scroll"><table><thead><tr><th><button type="button" data-sort="artist">Artist ↕</button></th><th><button type="button" data-sort="album">Album ↕</button></th><th class="right"><button type="button" data-sort="score">Score ↕</button></th></tr></thead><tbody id="rows"></tbody></table></div>
+      <div class="table-scroll"><table><thead><tr><th><button type="button" data-sort="artist">Artist ↕</button></th><th><button type="button" data-sort="album">Release ↕</button></th><th><button type="button" data-sort="releaseType">Type ↕</button></th><th class="right"><button type="button" data-sort="score">Score ↕</button></th></tr></thead><tbody id="rows"></tbody></table></div>
       <p class="hint" id="emptyRows" hidden>No albums match this search.</p>
       <div class="pager"><button id="prevPage" class="secondary" type="button">← Previous</button><span id="pageLabel"></span><button id="nextPage" class="secondary" type="button">Next →</button></div>
     </section>
