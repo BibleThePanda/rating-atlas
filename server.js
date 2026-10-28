@@ -31,7 +31,7 @@ createServer(async (req,res) => {
   try {
     if (!(await stat(full)).isFile()) return sendJson(404,{error:'Not found'});
     const data=await readFile(full);
-    res.writeHead(200,{'Content-Type':types[path.extname(full)]||'application/octet-stream','Content-Length':data.length,'X-Content-Type-Options':'nosniff','Cache-Control':'public, max-age=300'});
+    res.writeHead(200,{'Content-Type':types[path.extname(full)]||'application/octet-stream','Content-Length':data.length,'X-Content-Type-Options':'nosniff','Cache-Control':(['.html','.js','.css'].includes(path.extname(full))?'no-cache, must-revalidate':'public, max-age=300')});
     res.end(req.method==='HEAD'?undefined:data);
   } catch {sendJson(404,{error:'File not found'});}
 }).listen(PORT,'0.0.0.0',()=>console.log('Rating Atlas listening on port '+PORT));
