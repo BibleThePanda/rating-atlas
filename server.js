@@ -12,7 +12,7 @@ createServer(async (req,res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(405,{error:'Method not allowed'});
   let pathname;
   try { pathname = new URL(req.url, 'http://localhost').pathname; } catch {return sendJson(400,{error:'Invalid URL'});}
-  if (pathname === '/api/health') return sendJson(200,{ok:true,app:'Rating Atlas'});
+  if (pathname === '/api/health') return sendJson(200,{ok:true,app:'Rating Atlas',release:process.env.RATING_ATLAS_RELEASE||'unlabeled'});
   if (pathname.startsWith('/api/ratings/')) {
     const username=pathname.slice('/api/ratings/'.length);
     if (!/^[A-Za-z0-9_-]{1,40}$/.test(username)) return sendJson(400,{code:'INVALID_USERNAME',error:'Enter a valid AOTY username.'});
