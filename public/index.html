@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d15">
+  <meta name="description" content="A mobile-friendly dashboard for exploring album ratings by artist.">
+  <title>Rating Atlas · Music Analytics</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand"><span class="brand-symbol">◉</span>RATING<span>ATLAS</span></div>
+    <div class="top-note">YOUR MUSIC, VISUALIZED</div>
+    <button id="theme" class="ghost theme" type="button" aria-label="Toggle light and dark theme">☀</button>
+  </header>
+  <section class="hero">
+    <p class="eyebrow">An artist-by-artist look</p>
+    <h1>Every rating.<br><em>A bigger picture.</em></h1>
+    <p class="intro">Discover your favorite artists, your rating patterns, and your complete album collection in one place.</p>
+    <form id="loadForm" class="lookup">
+      <label class="sr-only" for="username">AOTY username</label>
+      <span class="at">@</span>
+      <input id="username" placeholder="AOTY username" autocomplete="off" maxlength="40" required>
+      <button id="load" class="primary" type="submit">Load profile ↗</button>
+    </form>
+    <p id="status" class="status" role="status" aria-live="polite">Automatic AOTY profile access requires permission. You can import a ratings file below.</p>
+    <div class="import-row">
+      <label class="upload" for="importFile">↑ Import ratings CSV / JSON</label>
+      <input id="importFile" class="sr-only" type="file" accept=".csv,.json,text/csv,application/json">
+      <button id="importHelp" class="help" type="button" aria-expanded="false">File format help</button>
+    </div>
+    <p class="tip">Your imported data stays in your browser—it is not uploaded to our server.</p>
+    <div id="importInstructions" class="instructions" hidden>
+      Import a CSV file with column headers <code>artist,album,score,url</code> (URL optional), or a JSON array of objects using those same fields. Scores are from 0 through 100.
+      <p><code>artist,album,score</code><br><code>Radiohead,In Rainbows,94</code><br><code>Little Simz,Sometimes I Might Be Introvert,89</code></p>
+    </div>
+  </section>
+  <main id="dashboard" hidden>
+    <div class="section-line">
+      <div><p class="eyebrow">Listening fingerprint</p><h2 id="profileName">Your collection</h2></div>
+      <a id="profileLink" class="profile-link" target="_blank" rel="noopener noreferrer" hidden>View AOTY profile ↗</a>
+    </div>
+    <section id="stats" class="stats" aria-label="Summary statistics"></section>
+    <div class="chart-grid">
+      <article class="panel wide">
+        <div class="panel-header"><div><p class="eyebrow">Artist landscape</p><h3>Average score by artist</h3></div>
+          <label class="filter-label" for="minAlbums">Minimum albums
+            <select id="minAlbums"><option value="1" selected>1+</option><option value="2">2+</option><option value="3">3+</option><option value="5">5+</option><option value="10">10+</option></select>
+          </label>
+        </div>
+        <div class="chart-wrap tall"><canvas id="averageChart"></canvas></div>
+        <p class="hint">Top 25 qualifying artists · tap a bar to explore their albums.</p>
+        <p class="hint" id="noArtists" hidden>No artists meet this minimum. Select a lower minimum.</p>
+      </article>
+      <article class="panel">
+        <div class="panel-header"><div><p class="eyebrow">Collection depth</p><h3>Albums rated per artist</h3></div></div>
+        <div class="chart-wrap"><canvas id="countChart"></canvas></div>
+        <p class="hint">Top 15 artists by number of albums. Tap to drill down.</p>
+      </article>
+      <article class="panel">
+        <div class="panel-header"><div><p class="eyebrow">Your score DNA</p><h3>Score distribution</h3></div></div>
+        <div class="chart-wrap"><canvas id="distributionChart"></canvas></div>
+        <p class="hint">10-point score buckets; 100 is included in the final bucket.</p>
+      </article>
+    </div>
+    <section id="artistPanel" class="panel artist-panel" hidden>
+      <div class="panel-header"><div><p class="eyebrow">Artist detail</p><h3 id="artistTitle">Individual ratings</h3></div>
+      <button id="closeArtist" class="ghost" type="button">Close ✕</button></div>
+      <div class="chart-wrap tall"><canvas id="artistChart"></canvas></div>
+    </section>
+    <section class="panel table-panel">
+      <div class="panel-header table-head"><div><p class="eyebrow">Complete catalog</p><h3>Album ratings <span id="tableCount"></span></h3></div>
+      <label class="sr-only" for="search">Search artists or albums</label>
+      <input id="search" type="search" class="search" placeholder="⌕  Search artist or album">
+      </div>
+      <div class="table-scroll"><table><thead><tr><th><button type="button" data-sort="artist">Artist ↕</button></th><th><button type="button" data-sort="album">Album ↕</button></th><th class="right"><button type="button" data-sort="score">Score ↕</button></th></tr></thead><tbody id="rows"></tbody></table></div>
+      <p class="hint" id="emptyRows" hidden>No albums match this search.</p>
+      <div class="pager"><button id="prevPage" class="secondary" type="button">← Previous</button><span id="pageLabel"></span><button id="nextPage" class="secondary" type="button">Next →</button></div>
+    </section>
+    <footer>Independent project · Not affiliated with Album of the Year · Imported ratings remain on this device</footer>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" defer></script>
+<script src="/app.js" defer></script>
+</body>
+</html>
