@@ -2,13 +2,14 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const MAX_FILE = 12*1024*1024, PER_PAGE = 75;
-  let ratings = [], artists = [], page = 0, sort = 'score', sortDir = -1, selectedArtist = '';
+  let allRatings = [], ratings = [], artists = [], page = 0, sort = 'score', sortDir = -1, selectedArtist = '';
   const charts = {};
   const aliases = {
     artist:['artist','artistname','artist_name','performer'],
     album:['album','albumname','album_name','albumtitle','release','title'],
     score:['score','rating','userrating','user_rating','myrating'],
-    url:['url','link','albumurl','album_url','releaseurl']
+    url:['url','link','albumurl','album_url','releaseurl'],
+    type:['type','releasetype','release_type','mediatype','media_type','format','category']
   };
   const normalize = x => String(x).trim().toLowerCase().replace(/[^a-z0-9_]/g,'');
   const escapeLabel = name => String(name).replace(/\s+/g,' ').trim();
@@ -17,6 +18,18 @@
     const name = Object.keys(obj).find(k=>allowed.has(normalize(k)));
     return name === undefined ? undefined : obj[name];
   };
+  // AOTY's community API uses mediaType (LP, EP, Single, etc.).
+  // Missing type is deliberately UNCLASSIFIED, never silently called an album.
+  function releaseKind(row) {
+    const value=String(row.releaseType??row.mediaType??row.type??'').toLowerCase().replace(/[_-]+/g,' ').trim();
+    if (!value) return 'unknown';
+    if (/^(single|singles|digital single|promo single|7 inch single|12 inch single)$/.test(value)||/\bsingle\b/.test(value)) return 'single';
+    if (/^(ep|eps|extended play|mini album|mini-album)$/.test(value)||/\bep\b/.test(value)) return 'ep';
+    if (/^(lp|album|albums|studio album|full length|full-length|long play|long player)$/.test(value)||/\blp\b/.test(value)) return 'album';
+    return 'other';
+  }
+  const TYPE_LABELS={album:'Album',ep:'EP',single:'Single',other:'Other',unknown:'Unclassified'};
+  function normalizeRatings(rows) {return rows.map(row=>({...row,releaseKind:releaseKind(row)}));}
   function csvRows(raw) {
     const rows = []; let row = [], current = '', quoted = false;
     const text=String(raw).replace(/^\uFEFF/,'');
@@ -69,7 +82,7 @@
       const key=artist.toLowerCase()+'\0'+album.toLowerCase();
       if(seen.has(key))continue;
       seen.add(key);
-      out.push({artist,album,score,url:safeUrl(field(rec,'url'))});
+      out.push({artist,album,score,url:safeUrl(field(rec,'url')),releaseType:String(field(rec,'type')??'').trim()||null});
     }
     if(!out.length)throw Error('No valid ratings found. Please use artist, album and score columns (0–100).');
     return {records:out,skipped};
