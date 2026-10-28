@@ -30,6 +30,51 @@
   }
   const TYPE_LABELS={album:'Album',ep:'EP',single:'Single',other:'Other',unknown:'Unclassified'};
   function normalizeRatings(rows) {return rows.map(row=>({...row,releaseKind:releaseKind(row)}));}
+  // Treat joint artist credits as contributions from each named artist.
+  // Preserve well-known ensemble names that include punctuation as part of their identity.
+  const INTACT_ACTS=new Set([
+    'earth, wind & fire','tyler, the creator','florence and the machine',
+    'mumford & sons','simon & garfunkel','hall & oates','daryl hall & john oates',
+    'brooks & dunn','tegan and sara','crosby, stills & nash',
+    'crosby, stills, nash & young','the head and the heart','of monsters and men',
+    'she & him','angus & julia stone','peter, paul and mary','peter, paul & mary',
+    'belle and sebastian','catfish and the bottlemen','marina and the diamonds',
+    'siouxsie and the banshees','nick cave & the bad seeds'
+  ]);
+  let canonicalArtists=new Map();
+  function creditParts(credit) {
+    const original=String(credit??'').trim();
+    if (!original || INTACT_ACTS.has(original.toLocaleLowerCase())) return original?[original]:[];
+    // Never split '/' inside stage names such as AC/DC; only spaced separators.
+    const joined=original.split(/\s+(?:&|\+|×|x|and|with|featuring|feat\.?|ft\.?|vs\.?)\s+|\s+\/\s+/i);
+    const parts=[];
+    for (const piece of joined) {
+      const segment=piece.trim();
+      if(!segment)continue;
+      if(INTACT_ACTS.has(segment.toLocaleLowerCase())){parts.push(segment);continue;}
+      // Distinguish the surname comma in Tyler, the Creator from
+      // AOTY's "Artist A, Artist B" contributor list.
+      const comma=segment.split(/,\s+/).filter(Boolean);
+      if(comma.length>1)parts.push(...comma);else parts.push(segment);
+    }
+    const seen=new Set();
+    return parts.filter(part=>{
+      const key=part.toLocaleLowerCase();
+      if(seen.has(key))return false;
+      seen.add(key);return true;
+    });
+  }
+  function creditedArtists(credit) {
+    return creditParts(credit).map(name=>canonicalArtists.get(name.toLocaleLowerCase())||name);
+  }
+  function rebuildCanonicalArtists() {
+    canonicalArtists=new Map();
+    // Favor artist casing from a non-collaboration entry when available.
+    for(const r of allRatings) {
+      const parts=creditParts(r.artist);
+      if(parts.length===1)canonicalArtists.set(parts[0].toLocaleLowerCase(),parts[0]);
+    }
+  }
   function csvRows(raw) {
     const rows = []; let row = [], current = '', quoted = false;
     const text=String(raw).replace(/^\uFEFF/,'');
@@ -97,9 +142,13 @@
   function calcArtists() {
     const groups=new Map();
     ratings.forEach(r=>{
-      const key=r.artist.toLocaleLowerCase();
-      if(!groups.has(key)) groups.set(key,{name:r.artist,albums:[]});
-      groups.get(key).albums.push(r);
+      const credits=creditedArtists(r.artist);
+      credits.forEach(name=>{
+        const key=name.toLocaleLowerCase();
+        if(!groups.has(key))groups.set(key,{name,albums:[]});
+        // One collaborative record belongs to each credited artist, once each.
+        groups.get(key).albums.push(r);
+      });
     });
     artists=Array.from(groups.values()).map(g=>({...g,count:g.albums.length,avg:mean(g.albums.map(r=>r.score))}));
   }
@@ -227,7 +276,7 @@
     const entries=[...artist.albums].sort((a,b)=>b.score-a.score);
     $('artistChart').parentElement.style.height=Math.max(280,entries.length*42+75)+'px';
     createChart('artistChart',{type:'bar',
-      data:{labels:entries.map(x=>x.album),datasets:[{data:entries.map(x=>x.score),backgroundColor:colors()[1],borderRadius:5,maxBarThickness:25}]},
+      data:{labels:entries.map(x=>x.album+(creditedArtists(x.artist).length>1?' · collaboration':'')),datasets:[{data:entries.map(x=>x.score),backgroundColor:colors()[1],borderRadius:5,maxBarThickness:25}]},
       options:chartOptions(true,100,null,'scores'),plugins:[valueLabels]});
     if(scroll)$('artistPanel').scrollIntoView({behavior:'smooth',block:'start'});
   }
@@ -246,8 +295,20 @@
     for(const r of portion) {
       const tr=document.createElement('tr');
       const a=document.createElement('td'), b=document.createElement('td'), c=document.createElement('td'), d=document.createElement('td');
-      const btn=document.createElement('button');btn.className='artist-btn';btn.type='button';btn.textContent=r.artist;btn.addEventListener('click',()=>openArtist(r.artist));
-      a.append(btn);
+      const credits=creditedArtists(r.artist);
+      if(credits.length>1) {
+        const original=document.createElement('div');original.className='credit-original';original.textContent=r.artist;a.append(original);
+        const members=document.createElement('div');members.className='credit-members';
+        for(const name of credits){
+          const btn=document.createElement('button');btn.className='artist-btn credit-member';btn.type='button';btn.textContent=name;
+          btn.addEventListener('click',()=>openArtist(name));members.append(btn);
+        }
+        a.append(members);
+      } else {
+        const name=credits[0]||r.artist;
+        const btn=document.createElement('button');btn.className='artist-btn';btn.type='button';btn.textContent=name;
+        btn.addEventListener('click',()=>openArtist(name));a.append(btn);
+      }
       if(r.url) {const link=document.createElement('a');link.href=r.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=r.album;b.append(link);}
       else b.textContent=r.album;
       const type=document.createElement('span');type.className='release-badge type-'+r.releaseKind;type.textContent=TYPE_LABELS[r.releaseKind];c.append(type);
@@ -282,11 +343,17 @@
         : 'Showing only '+TYPE_LABELS[kind].toLowerCase()+' releases in every chart and the table.';
     if (unknown) $('releaseNote').textContent+=' '+unknown+' release(s) lack type information; add a type column to your import to classify them.';
     $('artistPanel').hidden=true;selectedArtist='';page=0;
-    calcArtists();renderStats();redrawCharts();renderTable();
+    calcArtists();
+    const collaborations=ratings.filter(r=>creditedArtists(r.artist).length>1).length;
+    $('collabNote').textContent=collaborations
+      ? collaborations+' collaborative release'+(collaborations===1?' is':'s are')+' credited to each participating artist. Each release is counted only once in the overall total and score distribution.'
+      : 'Collaborations are credited to every named artist when present. Overall release totals count each release only once.';
+    renderStats();redrawCharts();renderTable();
   }
   function displayCollection(name,profileUrl=null) {
     if(!allRatings.length)return;
     allRatings=normalizeRatings(allRatings);
+    rebuildCanonicalArtists();
     $('profileName').textContent=name;
     $('profileLink').hidden=!profileUrl;
     if(profileUrl)$('profileLink').href=profileUrl;
