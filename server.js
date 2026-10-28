@@ -1,3 +1,4 @@
+import { loadUserRatings, ProviderError } from './provider.js';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,7 +13,17 @@ createServer(async (req,res) => {
   let pathname;
   try { pathname = new URL(req.url, 'http://localhost').pathname; } catch {return sendJson(400,{error:'Invalid URL'});}
   if (pathname === '/api/health') return sendJson(200,{ok:true,app:'Rating Atlas'});
-  if (pathname.startsWith('/api/ratings/')) return sendJson(503,{code:'PERMISSION_REQUIRED',error:'Automatic AOTY access is unavailable: the site restricts automated scraping without permission. Use Import CSV/JSON to explore your ratings. No data was fetched.'});
+  if (pathname.startsWith('/api/ratings/')) {
+    const username=pathname.slice('/api/ratings/'.length);
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(username)) return sendJson(400,{code:'INVALID_USERNAME',error:'Enter a valid AOTY username.'});
+    try {
+      const data=await loadUserRatings(username);
+      return sendJson(200,data);
+    } catch (err) {
+      const status=err instanceof ProviderError?err.status:502;
+      return sendJson(status,{code:err instanceof ProviderError?err.code:'FETCH_FAILED',error:err.message||'The community ratings provider is unavailable.'});
+    }
+  }
   if (pathname.startsWith('/api/')) return sendJson(404,{error:'Endpoint not found'});
   const relative=pathname==='/'?'index.html':decodeURIComponent(pathname).replace(/^\/+/, '');
   const full=path.resolve(root,relative);
