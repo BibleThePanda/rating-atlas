@@ -105,8 +105,9 @@
   }
   function renderStats() {
     const scores=ratings.map(x=>x.score);
-    const items=[['Total albums',ratings.length.toLocaleString()],['Artists',artists.length.toLocaleString()],
-      ['Average',fmt(mean(scores))],['Median',fmt(median(scores))],['Highest',fmt(Math.max(...scores))],['Lowest',fmt(Math.min(...scores))]];
+    const items=[['Selected releases',ratings.length.toLocaleString()],['Selected artists',artists.length.toLocaleString()],
+      ['Average',scores.length?fmt(mean(scores)):'—'],['Median',scores.length?fmt(median(scores)):'—'],
+      ['Highest',scores.length?fmt(Math.max(...scores)):'—'],['Lowest',scores.length?fmt(Math.min(...scores)):'—']];
     const fragment=document.createDocumentFragment();
     items.forEach(([label,value])=>{
       const div=document.createElement('div');div.className='stat';
@@ -140,7 +141,7 @@
       scales};
   }
   function redrawCharts() {
-    if(!ratings.length)return;
+    if(!ratings.length){Object.keys(charts).forEach(id=>{charts[id].destroy();delete charts[id];});$('noArtists').hidden=false;return;}
     const [accent,blue]=colors(), minimum=Number($('minAlbums').value);
     const top=artists.filter(x=>x.count>=minimum).sort((a,b)=>b.avg-a.avg||b.count-a.count).slice(0,25);
     $('noArtists').hidden=top.length>0;
@@ -174,7 +175,7 @@
     const query=$('search').value.toLocaleLowerCase().trim();
     const filtered=ratings.filter(x=>(x.artist+' '+x.album).toLocaleLowerCase().includes(query));
     filtered.sort((a,b)=>{
-      const v=sort==='score'?a.score-b.score:a[sort].localeCompare(b[sort],undefined,{sensitivity:'base'});
+      const v=sort==='score'?a.score-b.score:sort==='releaseType'?a.releaseKind.localeCompare(b.releaseKind):a[sort].localeCompare(b[sort],undefined,{sensitivity:'base'});
       return sortDir*v;
     });
     const lastPage=Math.max(0,Math.ceil(filtered.length/PER_PAGE)-1);
@@ -184,26 +185,56 @@
     const fragment=document.createDocumentFragment();
     for(const r of portion) {
       const tr=document.createElement('tr');
-      const a=document.createElement('td'), b=document.createElement('td'), c=document.createElement('td');
+      const a=document.createElement('td'), b=document.createElement('td'), c=document.createElement('td'), d=document.createElement('td');
       const btn=document.createElement('button');btn.className='artist-btn';btn.type='button';btn.textContent=r.artist;btn.addEventListener('click',()=>openArtist(r.artist));
       a.append(btn);
       if(r.url) {const link=document.createElement('a');link.href=r.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=r.album;b.append(link);}
       else b.textContent=r.album;
-      c.className='right';const badge=document.createElement('span');badge.className='score';badge.textContent=fmt(r.score);c.append(badge);
-      tr.append(a,b,c);fragment.append(tr);
+      const type=document.createElement('span');type.className='release-badge type-'+r.releaseKind;type.textContent=TYPE_LABELS[r.releaseKind];c.append(type);
+      d.className='right';const badge=document.createElement('span');badge.className='score';badge.textContent=fmt(r.score);d.append(badge);
+      tr.append(a,b,c,d);fragment.append(tr);
     }
     $('rows').replaceChildren(fragment);$('emptyRows').hidden=filtered.length!==0;
     $('prevPage').disabled=page===0;$('nextPage').disabled=page===lastPage;
     $('pageLabel').textContent=filtered.length?'Showing '+(page*PER_PAGE+1)+'–'+Math.min((page+1)*PER_PAGE,filtered.length)+' of '+filtered.length.toLocaleString():'No results';
   }
+  function applyReleaseFilter() {
+    const kind=$('releaseFilter').value;
+    ratings=kind==='all'?[...allRatings]:allRatings.filter(x=>x.releaseKind===kind);
+    const kinds=['album','ep','single','other','unknown'];
+    const counts=Object.fromEntries(kinds.map(k=>[k,allRatings.filter(x=>x.releaseKind===k).length]));
+    const chips=document.createDocumentFragment();
+    for (const k of kinds) {
+      const button=document.createElement('button');
+      button.type='button';
+      button.className='type-chip'+(kind===k?' active':'');
+      button.setAttribute('aria-pressed',String(kind===k));
+      button.textContent=TYPE_LABELS[k]+' · '+counts[k].toLocaleString();
+      button.addEventListener('click',()=>{$('releaseFilter').value=k;applyReleaseFilter();});
+      chips.append(button);
+    }
+    $('releaseCounts').replaceChildren(chips);
+    const unknown=counts.unknown;
+    $('releaseNote').textContent=kind==='all'
+      ? 'All release types combined. Switch to Albums to exclude singles and EPs.'
+      : kind==='album'
+        ? 'LP albums only. '+counts.single+' singles and '+counts.ep+' EPs are excluded from all graphs and averages.'
+        : 'Showing only '+TYPE_LABELS[kind].toLowerCase()+' releases in every chart and the table.';
+    if (unknown) $('releaseNote').textContent+=' '+unknown+' release(s) lack type information; add a type column to your import to classify them.';
+    $('artistPanel').hidden=true;selectedArtist='';page=0;
+    calcArtists();renderStats();redrawCharts();renderTable();
+  }
   function displayCollection(name,profileUrl=null) {
-    if(!ratings.length)return;
-    calcArtists();$('profileName').textContent=name;
+    if(!allRatings.length)return;
+    allRatings=normalizeRatings(allRatings);
+    $('profileName').textContent=name;
     $('profileLink').hidden=!profileUrl;
     if(profileUrl)$('profileLink').href=profileUrl;
-    $('dashboard').hidden=false;$('artistPanel').hidden=true;selectedArtist='';
+    $('dashboard').hidden=false;
     $('search').value='';page=0;
-    renderStats();redrawCharts();renderTable();
+    // Only default to Albums when the data actually identifies albums.
+    $('releaseFilter').value=allRatings.some(x=>x.releaseKind==='album')?'album':'all';
+    applyReleaseFilter();
   }
   $('loadForm').addEventListener('submit',async event=>{
     event.preventDefault();
@@ -216,8 +247,8 @@
       const data=await res.json();
       if(!res.ok)throw Error(data.error||'Profile could not be loaded.');
       if(!Array.isArray(data.ratings)||!data.ratings.length)throw Error('No ratings found on that profile.');
-      ratings=data.ratings;displayCollection('@'+user,data.profileUrl||null);
-      showStatus('Loaded '+ratings.length+' ratings.');
+      allRatings=data.ratings;displayCollection('@'+user,data.profileUrl||null);
+      showStatus('Loaded '+allRatings.length+' rated releases. Albums, EPs and singles now have separate filters.');
     } catch(e) {showStatus(e.message,true);} finally {$('load').disabled=false;}
   });
   $('importHelp').addEventListener('click',()=>{
@@ -229,12 +260,14 @@
     try {
       if(file.size>MAX_FILE)throw Error('Please import a file smaller than 12 MB.');
       const result=importRatings(await file.text(),file.name);
-      ratings=result.records;
+      allRatings=result.records;
       displayCollection('Imported collection · '+file.name);
-      showStatus('Imported '+ratings.length.toLocaleString()+' album ratings'+(result.skipped?' · '+result.skipped+' invalid rows skipped':'')+'. Your file stayed on your device.');
+      showStatus('Imported '+allRatings.length.toLocaleString()+' rated releases'+(result.skipped?' · '+result.skipped+' invalid rows skipped':'')+'. Your file stayed on your device.');
     } catch(e){showStatus(e.message,true);}
     finally{event.target.value='';}
   });
+  $('releaseFilter').addEventListener('change',applyReleaseFilter);
+  $('topArtists').addEventListener('change',redrawCharts);
   $('minAlbums').addEventListener('change',redrawCharts);
   $('search').addEventListener('input',()=>{page=0;renderTable();});
   document.querySelectorAll('[data-sort]').forEach(b=>b.addEventListener('click',()=>{
@@ -247,7 +280,7 @@
   $('closeArtist').addEventListener('click',()=>{$('artistPanel').hidden=true;selectedArtist='';});
   function applyTheme(light) {
     document.body.classList.toggle('light',light);$('theme').textContent=light?'☾':'☀';
-    if(ratings.length){redrawCharts();if(selectedArtist)openArtist(selectedArtist,false);}
+    if(allRatings.length){redrawCharts();if(selectedArtist)openArtist(selectedArtist,false);}
   }
   try{applyTheme(localStorage.getItem('rating-atlas-theme')==='light');}catch{applyTheme(false);}
   $('theme').addEventListener('click',()=>{
